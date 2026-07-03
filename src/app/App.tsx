@@ -228,7 +228,8 @@ export default function App() {
   const [usersList, setUsersList] = useState(INITIAL_USERS);
   const [editCourses, setEditCourses] = useState<number[]>([]);
   const [dragOver, setDragOver] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<string | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [uploadTitle, setUploadTitle] = useState("");
   const [uploadOrder, setUploadOrder] = useState(1);
   const [uploadChapterId, setUploadChapterId] = useState(1);
@@ -305,38 +306,84 @@ export default function App() {
     }
   };
 
-  const handleSaveUpload = () => {
-    if (!uploadedFile || !uploadTitle.trim()) return;
+  const handleSaveUpload = async () => {
+    if (!uploadedFile || !uploadTitle.trim() || isUploading) return;
 
-    setCurriculum((prev) => {
-      const next = cloneCurriculum(prev);
-      const chapterIndex = next.findIndex((chapter) => chapter.id === uploadChapterId);
-      if (chapterIndex < 0) return prev;
+    setIsUploading(true);
 
-      const chapter = next[chapterIndex];
-      const insertOrder = Math.min(Math.max(1, uploadOrder), chapter.videos.length + 1);
-      const nextVideoId = Math.max(...next.flatMap((chapterItem) => chapterItem.videos.map((video) => video.id))) + 1;
-      const newVideo: CourseVideo = {
-        id: nextVideoId,
-        chapterId: chapter.id,
-        order: insertOrder,
-        title: uploadTitle.trim(),
-        duration: "00:00",
-        status: "available",
-        videoUrl: SAMPLE_VIDEO_URL,
-      };
-
-      chapter.videos.splice(insertOrder - 1, 0, newVideo);
-      chapter.videos.forEach((video, index) => {
-        video.order = index + 1;
+    try {
+      // 1. Get presigned upload URL from backend
+      const res = await fetch("http://localhost:3001/api/uploads/presign", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fileName: uploadedFile.name,
+          contentType: uploadedFile.type || "video/mp4",
+        }),
       });
 
-      return next;
-    });
+      if (!res.ok) {
+        throw new Error("アップロード用の署名付きURLの取得に失敗しました。");
+      }
 
-    setUploadedFile(null);
-    setUploadTitle("");
-    setUploadOrder(1);
+      const data = await res.json();
+      const { uploadUrl, objectKey } = data;
+
+      // 2. Upload file directly to Supabase Storage using the signed URL
+      const uploadRes = await fetch(uploadUrl, {
+        method: "PUT",
+        body: uploadedFile,
+        headers: {
+          "Content-Type": uploadedFile.type || "video/mp4",
+        },
+      });
+
+      if (!uploadRes.ok) {
+        throw new Error("Supabase Storageへのファイルアップロードに失敗しました。");
+      }
+
+      // 3. Resolve the public URL of the uploaded video
+      const publicUrl = `https://dprgzaqyeohytuoiywlr.supabase.co/storage/v1/object/public/uploads/${objectKey}`;
+
+      // 4. Update local state curriculum
+      setCurriculum((prev) => {
+        const next = cloneCurriculum(prev);
+        const chapterIndex = next.findIndex((chapter) => chapter.id === uploadChapterId);
+        if (chapterIndex < 0) return prev;
+
+        const chapter = next[chapterIndex];
+        const insertOrder = Math.min(Math.max(1, uploadOrder), chapter.videos.length + 1);
+        const nextVideoId = Math.max(...next.flatMap((chapterItem) => chapterItem.videos.map((video) => video.id))) + 1;
+        const newVideo: CourseVideo = {
+          id: nextVideoId,
+          chapterId: chapter.id,
+          order: insertOrder,
+          title: uploadTitle.trim(),
+          duration: "00:00",
+          status: "available",
+          videoUrl: publicUrl,
+        };
+
+        chapter.videos.splice(insertOrder - 1, 0, newVideo);
+        chapter.videos.forEach((video, index) => {
+          video.order = index + 1;
+        });
+
+        return next;
+      });
+
+      setUploadedFile(null);
+      setUploadTitle("");
+      setUploadOrder(1);
+      alert("動画が正常にアップロードされ、カリキュラムに追加されました！");
+    } catch (err: any) {
+      console.error("Upload error:", err);
+      alert(err.message || "アップロード中にエラーが発生しました。");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const openEdit = (user: User) => {
@@ -1399,7 +1446,7 @@ export default function App() {
               <div
                 onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
                 onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => { e.preventDefault(); setDragOver(false); setUploadedFile(e.dataTransfer.files[0]?.name ?? null); }}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); setUploadedFile(e.dataTransfer.files[0] ?? null); }}
                 className={`relative border-2 border-dashed rounded-2xl p-10 text-center transition-all cursor-pointer ${
                   dragOver ? "border-blue-400 bg-blue-50"
                   : uploadedFile ? "border-emerald-400 bg-emerald-50/50"
@@ -1411,7 +1458,7 @@ export default function App() {
                     <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
                       <CheckCircle2 className="w-7 h-7 text-emerald-600" />
                     </div>
-                    <p className="font-bold text-slate-800 text-sm">{uploadedFile}</p>
+                    <p className="font-bold text-slate-800 text-sm">{uploadedFile.name}</p>
                     <p className="text-xs text-slate-400 mt-1">ファイルが選択されました</p>
                     <button
                       onClick={() => setUploadedFile(null)}
@@ -1433,7 +1480,7 @@ export default function App() {
                       <span className="text-sm text-blue-600 hover:text-blue-700 font-semibold underline underline-offset-2 transition-colors">
                         ファイルを選択する
                       </span>
-                      <input type="file" accept="video/mp4" className="hidden" onChange={(e) => setUploadedFile(e.target.files?.[0]?.name ?? null)} />
+                      <input type="file" accept="video/mp4" className="hidden" onChange={(e) => setUploadedFile(e.target.files?.[0] ?? null)} />
                     </label>
                     <p className="text-slate-300 text-xs mt-3">MP4形式 · 最大 2GB</p>
                   </div>
@@ -1482,16 +1529,22 @@ export default function App() {
               </div>
 
               <button
-                disabled={!uploadedFile || !uploadTitle.trim()}
+                disabled={!uploadedFile || !uploadTitle.trim() || isUploading}
                 onClick={handleSaveUpload}
                 className={`w-full py-3 rounded-xl font-bold text-sm transition-colors ${
-                  uploadedFile && uploadTitle.trim()
+                  isUploading
+                    ? "bg-slate-300 text-slate-600 cursor-wait"
+                    : uploadedFile && uploadTitle.trim()
                     ? "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white"
                     : "bg-slate-100 text-slate-400 cursor-not-allowed"
                 }`}
                 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
               >
-                {uploadedFile && uploadTitle.trim() ? "保存（アップロード）" : "タイトルとファイルを選択してください"}
+                {isUploading
+                  ? "アップロード中..."
+                  : uploadedFile && uploadTitle.trim()
+                  ? "保存（アップロード）"
+                  : "タイトルとファイルを選択してください"}
               </button>
             </div>
           </div>
