@@ -232,7 +232,7 @@ function AdminLayout({
         <div className="fixed inset-0 bg-black/40 z-20 lg:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
       )}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-30 w-60 bg-white border-r border-slate-100 flex flex-col transform transition-transform duration-200 ${
+        className={`fixed lg:sticky lg:top-0 lg:h-screen inset-y-0 left-0 z-30 w-60 bg-white border-r border-slate-100 flex flex-col transform transition-transform duration-200 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
       >
