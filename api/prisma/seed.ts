@@ -26,7 +26,7 @@ async function main() {
 
   const userIdMap = new Map<number, number>();
   const courseIdMap = new Map<number, number>();
-  const videoIdMap = new Map<number, number>();
+  const videoIdMap = new Map<string, number>();
 
   for (const user of USERS) {
     const created = await prisma.user.create({
@@ -50,35 +50,31 @@ async function main() {
     });
 
     courseIdMap.set(course.id, createdCourse.id);
-  }
 
-  for (const chapterGroup of CURRICULUM) {
-    const courseId = courseIdMap.get(chapterGroup.id);
-
-    if (!courseId) {
-      continue;
-    }
-
-    const createdChapter = await prisma.chapter.create({
-      data: {
-        courseId,
-        order: chapterGroup.order,
-        title: chapterGroup.title,
-      },
-    });
-
-    for (const video of chapterGroup.videos) {
-      const createdVideo = await prisma.video.create({
+    // Seed chapters and videos for this course
+    for (const chapterGroup of CURRICULUM) {
+      const createdChapter = await prisma.chapter.create({
         data: {
-          chapterId: createdChapter.id,
-          order: video.order,
-          title: video.title,
-          duration: video.duration,
-          assetKey: `seed/${video.id}.mp4`,
+          courseId: createdCourse.id,
+          order: chapterGroup.order,
+          title: chapterGroup.title,
         },
       });
 
-      videoIdMap.set(video.id, createdVideo.id);
+      for (const video of chapterGroup.videos) {
+        const createdVideo = await prisma.video.create({
+          data: {
+            chapterId: createdChapter.id,
+            order: video.order,
+            title: video.title,
+            duration: video.duration,
+            assetKey: `seed/${video.id}.mp4`,
+          },
+        });
+
+        // Compound key uniquely mapping mock video ID per course to the DB ID
+        videoIdMap.set(`${course.id}-${video.id}`, createdVideo.id);
+      }
     }
   }
 
@@ -114,9 +110,11 @@ async function main() {
 
     for (const [courseId, progress] of Object.entries(courses)) {
       const createdCourseId = courseIdMap.get(Number(courseId));
-      const chapter = CURRICULUM.find((entry) => entry.id === Number(courseId));
-      const firstVideoId = chapter?.videos[0]?.id;
-      const createdVideoId = firstVideoId ? videoIdMap.get(firstVideoId) : undefined;
+      
+      // Resolve the first video of the curriculum for this course
+      const firstChapter = CURRICULUM[0];
+      const firstVideoId = firstChapter?.videos[0]?.id;
+      const createdVideoId = firstVideoId ? videoIdMap.get(`${courseId}-${firstVideoId}`) : undefined;
 
       if (!createdCourseId || !createdVideoId) {
         continue;
