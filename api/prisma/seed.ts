@@ -4,6 +4,16 @@ import { COURSES, CURRICULUM, USER_PROGRESS, USERS } from '../src/data/mock-data
 const prisma = new PrismaClient();
 
 async function main() {
+  // Ensure Supabase Storage bucket 'uploads' exists
+  await prisma.$executeRawUnsafe(`
+    INSERT INTO storage.buckets (id, name, public)
+    VALUES ('uploads', 'uploads', true)
+    ON CONFLICT (id) DO NOTHING;
+  `).catch((err) => {
+    // eslint-disable-next-line no-console
+    console.warn('Could not create storage bucket uploads (this is normal if storage schema does not exist):', err.message);
+  });
+
   await prisma.$transaction([
     prisma.progress.deleteMany(),
     prisma.enrollment.deleteMany(),
