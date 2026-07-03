@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
-import { createUser, getUserById, updateUser, USERS } from '../data/mock-data';
+import { PrismaService } from '../prisma/prisma.service';
 
 interface UserInput {
   name?: string;
@@ -11,33 +11,119 @@ interface UserInput {
 
 @Controller('users')
 export class UsersController {
+  constructor(private readonly prisma: PrismaService) {}
+
+  private toUserResponse(user: {
+    id: number;
+    name: string;
+    email: string;
+    status: 'active' | 'inactive';
+    role: 'student' | 'admin';
+    enrollments?: { courseId: number }[];
+  }) {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      status: user.status,
+      role: user.role,
+      courses: user.enrollments?.map((enrollment) => enrollment.courseId) ?? [],
+    };
+  }
+
   @Get()
-  findAll() {
-    return USERS;
+  async findAll() {
+    const users = await this.prisma.user.findMany({
+      include: {
+        enrollments: true,
+      },
+      orderBy: {
+        id: 'asc',
+      },
+    });
+
+    return users.map((user) => this.toUserResponse(user));
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return getUserById(Number(id)) ?? { message: 'User not found' };
+  async findOne(@Param('id') id: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: Number(id) },
+      include: {
+        enrollments: true,
+      },
+    });
+
+    return user ? this.toUserResponse(user) : { message: 'User not found' };
   }
 
   @Post()
-  create(@Body() body: UserInput) {
+  async create(@Body() body: UserInput) {
     if (!body.name || !body.email) {
       return { message: 'name and email are required' };
     }
 
-    return createUser({
-      name: body.name,
-      email: body.email,
-      status: body.status,
-      role: body.role,
-      courses: body.courses,
+    const createdUser = await this.prisma.user.create({
+      data: {
+        name: body.name,
+        email: body.email,
+        status: body.status ?? 'active',
+        role: body.role ?? 'student',
+        enrollments: body.courses?.length
+          ? {
+              create: body.courses.map((courseId) => ({
+                courseId,
+              })),
+            }
+          : undefined,
+      },
+      include: {
+        enrollments: true,
+      },
     });
+
+    return this.toUserResponse(createdUser);
   }
 
   @Patch(':id')
-  update(@Param('id') id: string, @Body() body: UserInput) {
-    return updateUser(Number(id), body) ?? { message: 'User not found' };
+  async update(@Param('id') id: string, @Body() body: UserInput) {
+    const userId = Number(id);
+    const existingUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!existingUser) {
+      return { message: 'User not found' };
+    }
+
+    const updatedUser = await this.prisma.$transaction(async (transaction) => {
+      if (body.courses) {
+        await transaction.enrollment.deleteMany({
+          where: { userId },
+        });
+      }
+
+      return transaction.user.update({
+        where: { id: userId },
+        data: {
+          name: body.name,
+          email: body.email,
+          status: body.status,
+          role: body.role,
+          enrollments: body.courses
+            ? {
+                create: body.courses.map((courseId) => ({
+                  courseId,
+                })),
+              }
+            : undefined,
+        },
+        include: {
+          enrollments: true,
+        },
+      });
+    });
+
+    return this.toUserResponse(updatedUser);
   }
 }

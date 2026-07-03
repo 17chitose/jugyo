@@ -47,4 +47,6 @@ For AWS, the recommended production layout is:
 - Secrets Manager or SSM Parameter Store for `DATABASE_URL` and AWS credentials
 
 Prisma migrations should be applied in deployment, not manually in the app container.
+
+The upload API now generates real S3 presigned PUT URLs and records each object key in PostgreSQL.
   

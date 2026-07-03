@@ -30,6 +30,23 @@ This package uses Prisma with PostgreSQL.
 
 For AWS production, point `DATABASE_URL` at RDS and keep S3 credentials outside the repo.
 
+## AWS production setup
+
+Use the following services in production:
+
+- Amazon RDS for PostgreSQL
+- Amazon S3 for uploads
+- ECS Fargate or App Runner for the NestJS API
+- Secrets Manager or SSM Parameter Store for `DATABASE_URL`, `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`
+
+Before deployment, run Prisma migrations against RDS:
+
+```bash
+pnpm --dir api db:deploy
+```
+
+The upload presign endpoint now returns a real S3 presigned PUT URL and stores the object key in `UploadAsset`.
+
 ## API order to implement next
 
 1. Auth and session handling
