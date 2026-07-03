@@ -28,24 +28,24 @@ This package uses Prisma with PostgreSQL.
 4. Run `pnpm --dir api db:migrate` to create and apply migrations.
 5. Run `pnpm --dir api db:seed` to load the demo data.
 
-For AWS production, point `DATABASE_URL` at RDS and keep S3 credentials outside the repo.
+For Supabase production, point `DATABASE_URL` at the Supabase Postgres connection string and keep the Supabase service role key outside the repo.
 
-## AWS production setup
+## Supabase production setup
 
 Use the following services in production:
 
-- Amazon RDS for PostgreSQL
-- Amazon S3 for uploads
-- ECS Fargate or App Runner for the NestJS API
-- Secrets Manager or SSM Parameter Store for `DATABASE_URL`, `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`
+- Supabase Postgres for the database
+- Supabase Storage for uploads
+- Any Node.js host for the NestJS API
+- Secrets manager or environment variables for `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET`
 
-Before deployment, run Prisma migrations against RDS:
+Before deployment, run Prisma migrations against Supabase Postgres:
 
 ```bash
 pnpm --dir api db:deploy
 ```
 
-The upload presign endpoint now returns a real S3 presigned PUT URL and stores the object key in `UploadAsset`.
+The upload presign endpoint now returns a real Supabase signed upload URL and stores the object key in `UploadAsset`.
 
 ## API order to implement next
 

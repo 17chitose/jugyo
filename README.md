@@ -39,14 +39,14 @@ pnpm --dir api db:migrate
 pnpm --dir api db:seed
 ```
 
-For AWS, the recommended production layout is:
+For Supabase, the recommended production layout is:
 
-- Amazon RDS for PostgreSQL as the primary database
-- Amazon S3 for uploaded videos and thumbnails
-- ECS Fargate or App Runner for the NestJS API
-- Secrets Manager or SSM Parameter Store for `DATABASE_URL` and AWS credentials
+- Supabase Postgres connection string for `DATABASE_URL`
+- Supabase Storage for uploaded videos and thumbnails
+- Any Node.js host (like ECS, App Runner, or Render) for the NestJS API
+- Secrets manager or environment variables for `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `SUPABASE_STORAGE_BUCKET`
 
 Prisma migrations should be applied in deployment, not manually in the app container.
 
-The upload API now generates real S3 presigned PUT URLs and records each object key in PostgreSQL.
+The upload API now generates real Supabase signed upload URLs and records each object key in PostgreSQL.
   
