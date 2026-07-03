@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface UserInput {
@@ -125,5 +125,14 @@ export class UsersController {
     });
 
     return this.toUserResponse(updatedUser);
+  }
+
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    const userId = Number(id);
+    await this.prisma.user.delete({
+      where: { id: userId },
+    });
+    return { message: 'User deleted successfully' };
   }
 }

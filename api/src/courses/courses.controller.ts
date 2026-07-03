@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 function calculateCourseProgress(
@@ -158,5 +158,26 @@ export class CoursesController {
   @Get(':id/chapters')
   async findChapters(@Param('id') id: string) {
     return this.findCurriculum(id);
+  }
+
+  @Post('videos')
+  async createVideo(@Body() body: { chapterId: number; order: number; title: string; duration?: string; assetKey: string }) {
+    return this.prisma.video.create({
+      data: {
+        chapterId: body.chapterId,
+        order: body.order,
+        title: body.title,
+        duration: body.duration ?? '00:00',
+        assetKey: body.assetKey,
+      },
+    });
+  }
+
+  @Delete('videos/:id')
+  async deleteVideo(@Param('id') id: string) {
+    await this.prisma.video.delete({
+      where: { id: Number(id) },
+    });
+    return { message: 'Video deleted successfully' };
   }
 }
