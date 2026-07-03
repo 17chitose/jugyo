@@ -1,0 +1,103 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  student
+  admin
+}
+
+enum UserStatus {
+  active
+  inactive
+}
+
+model User {
+  id          Int          @id @default(autoincrement())
+  name        String
+  email       String       @unique
+  role        UserRole     @default(student)
+  status      UserStatus   @default(active)
+  enrollments Enrollment[]
+  progress    Progress[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Course {
+  id           Int          @id @default(autoincrement())
+  title        String
+  description  String?
+  thumbnailUrl String?
+  chapters     Chapter[]
+  enrollments  Enrollment[]
+  progress     Progress[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+}
+
+model Chapter {
+  id       Int     @id @default(autoincrement())
+  courseId Int
+  course   Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  order    Int
+  title    String
+  videos   Video[]
+
+  @@index([courseId])
+}
+
+model Video {
+  id        Int       @id @default(autoincrement())
+  chapterId Int
+  chapter   Chapter   @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  order     Int
+  title     String
+  duration  String
+  assetKey  String?
+  progress  Progress[]
+
+  @@index([chapterId])
+}
+
+model Enrollment {
+  id       Int    @id @default(autoincrement())
+  userId   Int
+  courseId Int
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([courseId])
+}
+
+model Progress {
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  courseId      Int
+  videoId       Int
+  percent       Int       @default(0)
+  completed     Boolean   @default(false)
+  lastWatchedAt DateTime?
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course        Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  video         Video     @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, videoId])
+  @@index([courseId])
+}
+
+model UploadAsset {
+  id           Int      @id @default(autoincrement())
+  fileName     String
+  mimeType     String
+  objectKey    String   @unique
+  uploadStatus String   @default("pending")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
