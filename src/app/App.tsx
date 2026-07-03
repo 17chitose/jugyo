@@ -211,6 +211,87 @@ function chapterCompletionPercentage(chapter: CurriculumChapter) {
   return Math.round((completed / chapter.videos.length) * 100);
 }
 
+function AdminLayout({
+  children,
+  sidebarOpen,
+  setSidebarOpen,
+  adminTab,
+  setAdminTab,
+  setView,
+}: {
+  children: React.ReactNode;
+  sidebarOpen: boolean;
+  setSidebarOpen: (open: boolean) => void;
+  adminTab: "users" | "progress" | "upload";
+  setAdminTab: (tab: "users" | "progress" | "upload") => void;
+  setView: (view: any) => void;
+}) {
+  return (
+    <div className="min-h-screen bg-slate-50 flex" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {sidebarOpen && (
+        <div className="fixed inset-0 bg-black/40 z-20 lg:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
+      )}
+      <aside
+        className={`fixed lg:static inset-y-0 left-0 z-30 w-60 bg-white border-r border-slate-100 flex flex-col transform transition-transform duration-200 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+        }`}
+      >
+        <div className="p-5 border-b border-slate-100">
+          <Logo size="sm" />
+          <p className="text-xs text-slate-400 mt-1 ml-9">管理者パネル</p>
+        </div>
+        <nav className="flex-1 p-3 space-y-1">
+          {[
+            { tab: "users" as const, icon: Users, label: "ユーザー管理" },
+            { tab: "progress" as const, icon: BarChart2, label: "進捗確認" },
+            { tab: "upload" as const, icon: Video, label: "動画管理" },
+          ].map(({ tab, icon: Icon, label }) => (
+            <button
+              key={tab}
+              onClick={() => { setAdminTab(tab); setSidebarOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                adminTab === tab
+                  ? "bg-blue-50 text-blue-700"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {label}
+            </button>
+          ))}
+        </nav>
+        <div className="p-3 border-t border-slate-100">
+          <button
+            onClick={() => setView("login")}
+            className="w-full flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-slate-600 text-sm transition-colors"
+          >
+            <LogOut className="w-4 h-4" />
+            ログアウト
+          </button>
+        </div>
+      </aside>
+
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="bg-white border-b border-slate-100 h-14 flex items-center px-4 gap-3 shrink-0 sticky top-0 z-10">
+          <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-slate-400 hover:text-slate-600 p-1 -ml-1">
+            <Menu className="w-5 h-5" />
+          </button>
+          <h2 className="font-bold text-slate-800 text-sm" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+            {adminTab === "users" ? "ユーザー管理" : adminTab === "progress" ? "進捗確認" : "動画管理"}
+          </h2>
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-slate-400 hidden sm:block">管理者</span>
+            <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center">
+              <span className="text-xs font-bold text-slate-600">管</span>
+            </div>
+          </div>
+        </header>
+        <div className="flex-1 overflow-auto">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState<View>("login");
   const [selectedCourse, setSelectedCourse] = useState(COURSES[0]);
@@ -1142,75 +1223,16 @@ export default function App() {
     else setView("admin-progress");
   };
 
-  const AdminLayout = ({ children }: { children: React.ReactNode }) => (
-    <div className="min-h-screen bg-slate-50 flex" style={{ fontFamily: "'Inter', sans-serif" }}>
-      {sidebarOpen && (
-        <div className="fixed inset-0 bg-black/40 z-20 lg:hidden backdrop-blur-sm" onClick={() => setSidebarOpen(false)} />
-      )}
-      <aside
-        className={`fixed lg:static inset-y-0 left-0 z-30 w-60 bg-white border-r border-slate-100 flex flex-col transform transition-transform duration-200 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        }`}
-      >
-        <div className="p-5 border-b border-slate-100">
-          <Logo size="sm" />
-          <p className="text-xs text-slate-400 mt-1 ml-9">管理者パネル</p>
-        </div>
-        <nav className="flex-1 p-3 space-y-1">
-          {[
-            { tab: "users" as const, icon: Users, label: "ユーザー管理" },
-            { tab: "progress" as const, icon: BarChart2, label: "進捗確認" },
-            { tab: "upload" as const, icon: Video, label: "動画管理" },
-          ].map(({ tab, icon: Icon, label }) => (
-            <button
-              key={tab}
-              onClick={() => { setAdminTab(tab); setSidebarOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-                adminTab === tab
-                  ? "bg-blue-50 text-blue-700"
-                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-700"
-              }`}
-            >
-              <Icon className="w-4 h-4" />
-              {label}
-            </button>
-          ))}
-        </nav>
-        <div className="p-3 border-t border-slate-100">
-          <button
-            onClick={() => setView("login")}
-            className="w-full flex items-center gap-2 px-3 py-2 text-slate-400 hover:text-slate-600 text-sm transition-colors"
-          >
-            <LogOut className="w-4 h-4" />
-            ログアウト
-          </button>
-        </div>
-      </aside>
-
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-slate-100 h-14 flex items-center px-4 gap-3 shrink-0 sticky top-0 z-10">
-          <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-slate-400 hover:text-slate-600 p-1 -ml-1">
-            <Menu className="w-5 h-5" />
-          </button>
-          <h2 className="font-bold text-slate-800 text-sm" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-            {adminTab === "users" ? "ユーザー管理" : adminTab === "progress" ? "進捗確認" : "動画管理"}
-          </h2>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-slate-400 hidden sm:block">管理者</span>
-            <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center">
-              <span className="text-xs font-bold text-slate-600">管</span>
-            </div>
-          </div>
-        </header>
-        <div className="flex-1 overflow-auto">{children}</div>
-      </div>
-    </div>
-  );
-
   // ─── ADMIN: USER MANAGEMENT ───────────────────────────────────────────────────
   if (view === "admin-users") {
     return (
-      <AdminLayout>
+      <AdminLayout
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        adminTab={adminTab}
+        setAdminTab={setAdminTab}
+        setView={setView}
+      >
         <div className="p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
             <div>
@@ -1414,7 +1436,13 @@ export default function App() {
     const completedCount = enrolledCourses.filter((c) => (userProgress[c.id]?.progress ?? 0) === 100).length;
 
     return (
-      <AdminLayout>
+      <AdminLayout
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        adminTab={adminTab}
+        setAdminTab={setAdminTab}
+        setView={setView}
+      >
         <div className="p-4 sm:p-6">
           <div className="mb-5">
             <h1 className="text-lg font-extrabold text-slate-800" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
@@ -1601,7 +1629,13 @@ export default function App() {
   // ─── ADMIN: VIDEO UPLOAD ──────────────────────────────────────────────────────
   if (view === "admin-upload") {
     return (
-      <AdminLayout>
+      <AdminLayout
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        adminTab={adminTab}
+        setAdminTab={setAdminTab}
+        setView={setView}
+      >
         <div className="p-4 sm:p-6">
           <div className="mb-6">
             <h1 className="text-lg font-extrabold text-slate-800" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
