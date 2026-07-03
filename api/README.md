@@ -18,6 +18,18 @@ pnpm --dir api start:dev
 
 The API runs on `http://localhost:3001/api` by default.
 
+## Database setup
+
+This package uses Prisma with PostgreSQL.
+
+1. Copy [api/.env.example](./.env.example) to [api/.env](./.env).
+2. Start PostgreSQL locally with `docker compose up -d postgres` from the repository root.
+3. Run `pnpm --dir api db:generate` to generate the Prisma client.
+4. Run `pnpm --dir api db:migrate` to create and apply migrations.
+5. Run `pnpm --dir api db:seed` to load the demo data.
+
+For AWS production, point `DATABASE_URL` at RDS and keep S3 credentials outside the repo.
+
 ## API order to implement next
 
 1. Auth and session handling

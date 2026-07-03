@@ -14,5 +14,8 @@ supportedArchitectures:
 minimumReleaseAge: 10080
 allowBuilds:
   '@nestjs/core': true
+  '@prisma/client': true
+  '@prisma/engines': true
   '@tailwindcss/oxide': true
   esbuild: true
+  prisma: true

@@ -21,4 +21,30 @@
   ```
 
   The backend exposes demo endpoints for health, auth, users, courses, progress, and upload presigning.
+
+## Database setup
+
+This project uses PostgreSQL with Prisma. For local development, copy [api/.env.example](api/.env.example) to [api/.env](api/.env) and start the database with:
+
+```bash
+docker compose up -d postgres
+```
+
+Then set up Prisma and seed the demo data:
+
+```bash
+pnpm install
+pnpm --dir api db:generate
+pnpm --dir api db:migrate
+pnpm --dir api db:seed
+```
+
+For AWS, the recommended production layout is:
+
+- Amazon RDS for PostgreSQL as the primary database
+- Amazon S3 for uploaded videos and thumbnails
+- ECS Fargate or App Runner for the NestJS API
+- Secrets Manager or SSM Parameter Store for `DATABASE_URL` and AWS credentials
+
+Prisma migrations should be applied in deployment, not manually in the app container.
   
