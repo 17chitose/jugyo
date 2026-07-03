@@ -12,6 +12,7 @@ type View =
   | "student-curriculum"
   | "student-video"
   | "admin-users"
+  | "admin-courses"
   | "admin-upload"
   | "admin-progress";
 
@@ -222,8 +223,8 @@ function AdminLayout({
   children: React.ReactNode;
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
-  adminTab: "users" | "progress" | "upload";
-  setAdminTab: (tab: "users" | "progress" | "upload") => void;
+  adminTab: "users" | "courses" | "progress" | "upload";
+  setAdminTab: (tab: "users" | "courses" | "progress" | "upload") => void;
   setView: (view: any) => void;
 }) {
   return (
@@ -243,6 +244,7 @@ function AdminLayout({
         <nav className="flex-1 p-3 space-y-1">
           {[
             { tab: "users" as const, icon: Users, label: "ユーザー管理" },
+            { tab: "courses" as const, icon: BookOpen, label: "コース管理" },
             { tab: "progress" as const, icon: BarChart2, label: "進捗確認" },
             { tab: "upload" as const, icon: Video, label: "動画管理" },
           ].map(({ tab, icon: Icon, label }) => (
@@ -277,7 +279,7 @@ function AdminLayout({
             <Menu className="w-5 h-5" />
           </button>
           <h2 className="font-bold text-slate-800 text-sm" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-            {adminTab === "users" ? "ユーザー管理" : adminTab === "progress" ? "進捗確認" : "動画管理"}
+            {adminTab === "users" ? "ユーザー管理" : adminTab === "courses" ? "コース管理" : adminTab === "progress" ? "進捗確認" : "動画管理"}
           </h2>
           <div className="ml-auto flex items-center gap-2">
             <span className="text-xs text-slate-400 hidden sm:block">管理者</span>
@@ -294,7 +296,24 @@ function AdminLayout({
 
 export default function App() {
   const [view, setView] = useState<View>("login");
+  const [coursesList, setCoursesList] = useState(COURSES);
   const [selectedCourse, setSelectedCourse] = useState(COURSES[0]);
+
+  useEffect(() => {
+    fetch("http://localhost:3001/api/courses")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch courses");
+        return res.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setCoursesList(data);
+        }
+      })
+      .catch((err) => {
+        console.warn("Backend API is offline, using mock courses data:", err);
+      });
+  }, []);
   const [curriculum, setCurriculum] = useState<CurriculumChapter[]>(() => cloneCurriculum(INITIAL_CURRICULUM));
   const [selectedVideo, setSelectedVideo] = useState<CourseVideo>(() => cloneCurriculum(INITIAL_CURRICULUM)[0].videos[2]);
   const [openChapters, setOpenChapters] = useState<number[]>([1]);
@@ -645,6 +664,138 @@ export default function App() {
     closeModal();
   };
 
+  const [editingCourse, setEditingCourse] = useState<any | null>(null);
+  const [courseFormTitle, setCourseFormTitle] = useState("");
+  const [courseFormThumbnailUrl, setCourseFormThumbnailUrl] = useState("");
+  const [courseFormThumbnailFile, setCourseFormThumbnailFile] = useState<File | null>(null);
+  const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState("");
+  const [thumbnailDragOver, setThumbnailDragOver] = useState(false);
+  const [isThumbnailUploading, setIsThumbnailUploading] = useState(false);
+
+  const openEditCourse = (course: any) => {
+    setEditingCourse(course);
+    setCourseFormTitle(course.title);
+    setCourseFormThumbnailUrl(course.thumbnail || "");
+    setCourseFormThumbnailFile(null);
+    setThumbnailPreviewUrl(course.thumbnail || "");
+  };
+
+  const closeEditCourseModal = () => {
+    setEditingCourse(null);
+    setCourseFormTitle("");
+    setCourseFormThumbnailUrl("");
+    setCourseFormThumbnailFile(null);
+    setThumbnailPreviewUrl("");
+  };
+
+  const handleThumbnailFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    if (file) {
+      setCourseFormThumbnailFile(file);
+      setThumbnailPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
+  const handleThumbnailDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setThumbnailDragOver(false);
+    const file = e.dataTransfer.files[0] ?? null;
+    if (file) {
+      setCourseFormThumbnailFile(file);
+      setThumbnailPreviewUrl(URL.createObjectURL(file));
+    }
+  };
+
+  const clearThumbnailSelection = () => {
+    setCourseFormThumbnailFile(null);
+    setCourseFormThumbnailUrl("");
+    setThumbnailPreviewUrl("");
+  };
+
+  const saveCourseEdit = async () => {
+    if (!editingCourse || !courseFormTitle.trim()) return;
+
+    setIsThumbnailUploading(true);
+
+    try {
+      let finalThumbnailUrl = courseFormThumbnailUrl;
+
+      if (courseFormThumbnailFile) {
+        try {
+          const res = await fetch("http://localhost:3001/api/uploads/presign", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              fileName: courseFormThumbnailFile.name,
+              contentType: courseFormThumbnailFile.type || "image/png",
+            }),
+          });
+
+          if (!res.ok) {
+            throw new Error("アップロードURLの取得に失敗しました。");
+          }
+
+          const data = await res.json();
+          const { uploadUrl, objectKey } = data;
+
+          const uploadRes = await fetch(uploadUrl, {
+            method: "PUT",
+            body: courseFormThumbnailFile,
+            headers: {
+              "Content-Type": courseFormThumbnailFile.type || "image/png",
+            },
+          });
+
+          if (!uploadRes.ok) {
+            throw new Error("Supabase Storageへのアップロードに失敗しました。");
+          }
+
+          finalThumbnailUrl = `https://dprgzaqyeohytuoiywlr.supabase.co/storage/v1/object/public/uploads/${objectKey}`;
+        } catch (uploadErr) {
+          console.warn("Backend API upload failed, falling back to local object URL:", uploadErr);
+          finalThumbnailUrl = thumbnailPreviewUrl || "https://images.unsplash.com/photo-1593720213428-28a5b9e94613?w=400&h=225&fit=crop&auto=format";
+        }
+      }
+
+      try {
+        const patchRes = await fetch(`http://localhost:3001/api/courses/${editingCourse.id}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            title: courseFormTitle.trim(),
+            thumbnailUrl: finalThumbnailUrl,
+          }),
+        });
+
+        if (!patchRes.ok) {
+          throw new Error("DBのコース情報の更新に失敗しました。");
+        }
+      } catch (patchErr) {
+        console.warn("Backend API is offline, using local state fallback for course edit:", patchErr);
+      }
+
+      setCoursesList((prev) =>
+        prev.map((c) =>
+          c.id === editingCourse.id
+            ? { ...c, title: courseFormTitle.trim(), thumbnail: finalThumbnailUrl }
+            : c
+        )
+      );
+
+      closeEditCourseModal();
+      alert("コース情報を正常に保存しました！");
+    } catch (err: any) {
+      console.error(err);
+      alert(err.message || "エラーが発生しました。");
+    } finally {
+      setIsThumbnailUploading(false);
+    }
+  };
+
   const toggleEditCourse = (id: number) =>
     setEditCourses((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]));
 
@@ -778,7 +929,7 @@ export default function App() {
             <p className="text-slate-400 text-sm mt-1">受講が許可されているコース一覧</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {COURSES.map((course) => (
+            {coursesList.map((course) => (
               <button
                 key={course.id}
                 onClick={() => { setSelectedCourse(course); setView("student-curriculum"); }}
@@ -1216,9 +1367,10 @@ export default function App() {
   }
 
   // ─── ADMIN LAYOUT ─────────────────────────────────────────────────────────────
-  const adminTab = view === "admin-upload" ? "upload" : view === "admin-progress" ? "progress" : "users";
-  const setAdminTab = (tab: "users" | "upload" | "progress") => {
+  const adminTab = view === "admin-upload" ? "upload" : view === "admin-progress" ? "progress" : view === "admin-courses" ? "courses" : "users";
+  const setAdminTab = (tab: "users" | "courses" | "upload" | "progress") => {
     if (tab === "users") setView("admin-users");
+    else if (tab === "courses") setView("admin-courses");
     else if (tab === "upload") setView("admin-upload");
     else setView("admin-progress");
   };
@@ -1358,7 +1510,7 @@ export default function App() {
                 <div>
                   <label className="block text-sm font-semibold text-slate-700 mb-2.5">受講コース</label>
                   <div className="space-y-2.5">
-                    {COURSES.map((course) => (
+                    {coursesList.map((course) => (
                       <label key={course.id} className="flex items-center gap-3 cursor-pointer group">
                         <input
                           type="checkbox"
@@ -1426,10 +1578,143 @@ export default function App() {
     );
   }
 
+  // ─── ADMIN: COURSE MANAGEMENT ──────────────────────────────────────────────────
+  if (view === "admin-courses") {
+    return (
+      <AdminLayout
+        sidebarOpen={sidebarOpen}
+        setSidebarOpen={setSidebarOpen}
+        adminTab={adminTab}
+        setAdminTab={setAdminTab}
+        setView={setView}
+      >
+        <div className="p-4 sm:p-6">
+          <div className="mb-6">
+            <h1 className="text-lg font-extrabold text-slate-800" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+              コース管理
+            </h1>
+            <p className="text-slate-400 text-sm mt-0.5">コース情報の編集、サムネイルの設定を行います</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {coursesList.map((course) => (
+              <div key={course.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm flex flex-col">
+                <div className="aspect-video relative overflow-hidden bg-slate-100">
+                  <img
+                    src={course.thumbnail || "https://images.unsplash.com/photo-1593720213428-28a5b9e94613?w=400&h=225&fit=crop&auto=format"}
+                    alt={course.title}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="p-5 flex-1 flex flex-col justify-between">
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-sm mb-2">{course.title}</h3>
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end">
+                    <button
+                      onClick={() => openEditCourse(course)}
+                      className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      コースを編集
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Edit Course Modal */}
+        {editingCourse && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                <h3 className="font-extrabold text-slate-800" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                  コース編集
+                </h3>
+                <button onClick={closeEditCourseModal} className="text-slate-300 hover:text-slate-600 transition-colors p-1 rounded-lg hover:bg-slate-50">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">コース名</label>
+                  <input
+                    type="text"
+                    value={courseFormTitle}
+                    onChange={(e) => setCourseFormTitle(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">サムネイル画像</label>
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setThumbnailDragOver(true); }}
+                    onDragLeave={() => setThumbnailDragOver(false)}
+                    onDrop={handleThumbnailDrop}
+                    className={`relative border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer ${
+                      thumbnailDragOver ? "border-blue-400 bg-blue-50"
+                      : courseFormThumbnailFile || courseFormThumbnailUrl ? "border-emerald-400 bg-emerald-50/50"
+                      : "border-slate-200 hover:border-blue-300 hover:bg-slate-50/70"
+                    }`}
+                  >
+                    {courseFormThumbnailFile || courseFormThumbnailUrl ? (
+                      <div>
+                        {thumbnailPreviewUrl && (
+                          <img src={thumbnailPreviewUrl} alt="Preview" className="w-full max-h-32 object-cover rounded-xl mb-3 border border-slate-100" />
+                        )}
+                        <p className="text-xs text-slate-500 truncate">{courseFormThumbnailFile ? courseFormThumbnailFile.name : "既存のサムネイル"}</p>
+                        <button
+                          onClick={clearThumbnailSelection}
+                          className="text-xs text-red-400 hover:text-red-600 mt-2 transition-colors underline underline-offset-2"
+                        >
+                          削除して選び直す
+                        </button>
+                      </div>
+                    ) : (
+                      <div>
+                        <Upload className="w-6 h-6 text-slate-400 mx-auto mb-2" />
+                        <p className="text-slate-700 font-bold text-xs">サムネイルをドラッグ＆ドロップ</p>
+                        <p className="text-slate-400 text-[10px] mt-0.5">または</p>
+                        <label className="mt-1.5 inline-block cursor-pointer">
+                          <span className="text-xs text-blue-600 hover:text-blue-700 font-semibold underline underline-offset-2 transition-colors">
+                            ファイルを選択する
+                          </span>
+                          <input type="file" accept="image/*" className="hidden" onChange={handleThumbnailFileChange} />
+                        </label>
+                        <p className="text-slate-300 text-[10px] mt-2">PNG, JPG形式</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-slate-100 flex gap-3 justify-end">
+                <button onClick={closeEditCourseModal} className="px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700 transition-colors">
+                  キャンセル
+                </button>
+                <button
+                  disabled={isThumbnailUploading}
+                  onClick={saveCourseEdit}
+                  className={`px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-colors ${
+                    isThumbnailUploading ? "bg-slate-300 cursor-wait text-slate-500" : ""
+                  }`}
+                  style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+                >
+                  {isThumbnailUploading ? "保存中..." : "変更を保存"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </AdminLayout>
+    );
+  }
+
   // ─── ADMIN: PROGRESS ─────────────────────────────────────────────────────────
   if (view === "admin-progress") {
     const userProgress = USER_PROGRESS[selectedProgressUser.id] ?? {};
-    const enrolledCourses = COURSES.filter((c) => selectedProgressUser.courses.includes(c.id));
+    const enrolledCourses = coursesList.filter((c) => selectedProgressUser.courses.includes(c.id));
     const avgProgress = enrolledCourses.length
       ? Math.round(enrolledCourses.reduce((sum, c) => sum + (userProgress[c.id]?.progress ?? 0), 0) / enrolledCourses.length)
       : 0;
@@ -1460,7 +1745,7 @@ export default function App() {
                 </div>
                 {usersList.map((user) => {
                   const up = USER_PROGRESS[user.id] ?? {};
-                  const enrolled = COURSES.filter((c) => user.courses.includes(c.id));
+                  const enrolled = coursesList.filter((c) => user.courses.includes(c.id));
                   const avg = enrolled.length
                     ? Math.round(enrolled.reduce((s, c) => s + (up[c.id]?.progress ?? 0), 0) / enrolled.length)
                     : 0;

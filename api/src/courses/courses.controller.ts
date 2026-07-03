@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 function calculateCourseProgress(
@@ -179,5 +179,17 @@ export class CoursesController {
       where: { id: Number(id) },
     });
     return { message: 'Video deleted successfully' };
+  }
+
+  @Patch(':id')
+  async updateCourse(@Param('id') id: string, @Body() body: { title?: string; thumbnailUrl?: string }) {
+    const courseId = Number(id);
+    return this.prisma.course.update({
+      where: { id: courseId },
+      data: {
+        title: body.title,
+        thumbnailUrl: body.thumbnailUrl,
+      },
+    });
   }
 }
