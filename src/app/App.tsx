@@ -1731,7 +1731,7 @@ export default function App() {
                             </div>
                             <button
                               onClick={() => handleDeleteVideo(video.id)}
-                              className="px-3 py-1.5 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all duration-200"
+                              className="px-3 py-1.5 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all duration-200"
                             >
                               削除
                             </button>
