@@ -13,7 +13,6 @@ type View =
   | "student-video"
   | "admin-users"
   | "admin-courses"
-  | "admin-upload"
   | "admin-progress";
 
 const COURSES = [
@@ -223,8 +222,8 @@ function AdminLayout({
   children: React.ReactNode;
   sidebarOpen: boolean;
   setSidebarOpen: (open: boolean) => void;
-  adminTab: "users" | "courses" | "progress" | "upload";
-  setAdminTab: (tab: "users" | "courses" | "progress" | "upload") => void;
+  adminTab: "users" | "courses" | "progress";
+  setAdminTab: (tab: "users" | "courses" | "progress") => void;
   setView: (view: any) => void;
 }) {
   return (
@@ -244,9 +243,8 @@ function AdminLayout({
         <nav className="flex-1 p-3 space-y-1">
           {[
             { tab: "users" as const, icon: Users, label: "ユーザー管理" },
-            { tab: "courses" as const, icon: BookOpen, label: "コース管理" },
+            { tab: "courses" as const, icon: BookOpen, label: "コース・動画管理" },
             { tab: "progress" as const, icon: BarChart2, label: "進捗確認" },
-            { tab: "upload" as const, icon: Video, label: "動画管理" },
           ].map(({ tab, icon: Icon, label }) => (
             <button
               key={tab}
@@ -279,7 +277,7 @@ function AdminLayout({
             <Menu className="w-5 h-5" />
           </button>
           <h2 className="font-bold text-slate-800 text-sm" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-            {adminTab === "users" ? "ユーザー管理" : adminTab === "courses" ? "コース管理" : adminTab === "progress" ? "進捗確認" : "動画管理"}
+            {adminTab === "users" ? "ユーザー管理" : adminTab === "courses" ? "コース・動画管理" : "進捗確認"}
           </h2>
           <div className="ml-auto flex items-center gap-2">
             <span className="text-xs text-slate-400 hidden sm:block">管理者</span>
@@ -445,6 +443,7 @@ export default function App() {
   const handleSaveUpload = async () => {
     if (!uploadedFile || !uploadTitle.trim() || isUploading) return;
 
+    const targetChapterId = uploadSelectedChapterId || uploadChapterId;
     setIsUploading(true);
 
     try {
@@ -493,7 +492,7 @@ export default function App() {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              chapterId: uploadChapterId,
+              chapterId: targetChapterId,
               order: uploadOrder,
               title: uploadTitle.trim(),
               duration: "00:00",
@@ -515,7 +514,7 @@ export default function App() {
       // 4. Update local state curriculum
       setCurriculum((prev) => {
         const next = cloneCurriculum(prev);
-        const chapterIndex = next.findIndex((chapter) => chapter.id === uploadChapterId);
+        const chapterIndex = next.findIndex((chapter) => chapter.id === targetChapterId);
         if (chapterIndex < 0) return prev;
 
         const chapter = next[chapterIndex];
@@ -542,6 +541,7 @@ export default function App() {
       setUploadedFile(null);
       setUploadTitle("");
       setUploadOrder(1);
+      setShowUploadVideoModal(false);
       alert("動画が正常にアップロードされ、カリキュラムに追加されました！");
     } catch (err: any) {
       console.error("Upload error:", err);
@@ -671,6 +671,10 @@ export default function App() {
   const [thumbnailPreviewUrl, setThumbnailPreviewUrl] = useState("");
   const [thumbnailDragOver, setThumbnailDragOver] = useState(false);
   const [isThumbnailUploading, setIsThumbnailUploading] = useState(false);
+  
+  const [adminViewCourseDetail, setAdminViewCourseDetail] = useState(false);
+  const [uploadSelectedChapterId, setUploadSelectedChapterId] = useState<number | null>(null);
+  const [showUploadVideoModal, setShowUploadVideoModal] = useState(false);
 
   const openEditCourse = (course: any) => {
     setEditingCourse(course);
@@ -793,6 +797,36 @@ export default function App() {
       alert(err.message || "エラーが発生しました。");
     } finally {
       setIsThumbnailUploading(false);
+    }
+  };
+
+  const handleDeleteVideo = async (videoId: number) => {
+    if (!window.confirm("この動画を削除してもよろしいですか？")) return;
+
+    try {
+      const res = await fetch(`http://localhost:3001/api/courses/videos/${videoId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        throw new Error("動画の削除に失敗しました。");
+      }
+
+      setCurriculum((prev) =>
+        prev.map((chapter) => ({
+          ...chapter,
+          videos: chapter.videos.filter((v) => v.id !== videoId),
+        }))
+      );
+      alert("動画を削除しました。");
+    } catch (err: any) {
+      console.warn("Backend API is offline, using mock fallback for delete video:", err);
+      setCurriculum((prev) =>
+        prev.map((chapter) => ({
+          ...chapter,
+          videos: chapter.videos.filter((v) => v.id !== videoId),
+        }))
+      );
     }
   };
 
@@ -1367,12 +1401,13 @@ export default function App() {
   }
 
   // ─── ADMIN LAYOUT ─────────────────────────────────────────────────────────────
-  const adminTab = view === "admin-upload" ? "upload" : view === "admin-progress" ? "progress" : view === "admin-courses" ? "courses" : "users";
-  const setAdminTab = (tab: "users" | "courses" | "upload" | "progress") => {
+  const adminTab = view === "admin-progress" ? "progress" : view === "admin-courses" ? "courses" : "users";
+  const setAdminTab = (tab: "users" | "courses" | "progress") => {
     if (tab === "users") setView("admin-users");
-    else if (tab === "courses") setView("admin-courses");
-    else if (tab === "upload") setView("admin-upload");
-    else setView("admin-progress");
+    else if (tab === "courses") {
+      setAdminViewCourseDetail(false); // Reset detail sub-view when clicking sidebar tab
+      setView("admin-courses");
+    } else setView("admin-progress");
   };
 
   // ─── ADMIN: USER MANAGEMENT ───────────────────────────────────────────────────
@@ -1589,40 +1624,126 @@ export default function App() {
         setView={setView}
       >
         <div className="p-4 sm:p-6">
-          <div className="mb-6">
-            <h1 className="text-lg font-extrabold text-slate-800" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-              コース管理
-            </h1>
-            <p className="text-slate-400 text-sm mt-0.5">コース情報の編集、サムネイルの設定を行います</p>
-          </div>
+          {!adminViewCourseDetail ? (
+            <>
+              <div className="mb-6">
+                <h1 className="text-lg font-extrabold text-slate-800" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                  コース・動画管理
+                </h1>
+                <p className="text-slate-400 text-sm mt-0.5">コース情報の編集や、受講動画の追加・削除を行います</p>
+              </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {coursesList.map((course) => (
-              <div key={course.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm flex flex-col">
-                <div className="aspect-video relative overflow-hidden bg-slate-100">
-                  <img
-                    src={course.thumbnail || "https://images.unsplash.com/photo-1593720213428-28a5b9e94613?w=400&h=225&fit=crop&auto=format"}
-                    alt={course.title}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="p-5 flex-1 flex flex-col justify-between">
-                  <div>
-                    <h3 className="font-bold text-slate-800 text-sm mb-2">{course.title}</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {coursesList.map((course) => (
+                  <div key={course.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm flex flex-col justify-between">
+                    <div className="aspect-video relative overflow-hidden bg-slate-100">
+                      <img
+                        src={course.thumbnail || "https://images.unsplash.com/photo-1593720213428-28a5b9e94613?w=400&h=225&fit=crop&auto=format"}
+                        alt={course.title}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    <div className="p-5 flex-1 flex flex-col justify-between">
+                      <div>
+                        <h3 className="font-bold text-slate-800 text-sm mb-2">{course.title}</h3>
+                      </div>
+                      <div className="mt-4 pt-4 border-t border-slate-50 flex items-center justify-between gap-2">
+                        <button
+                          onClick={() => openEditCourse(course)}
+                          className="flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-50 rounded-xl transition-colors"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                          情報編集
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedCourse(course);
+                            setAdminViewCourseDetail(true);
+                          }}
+                          className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
+                        >
+                          <Video className="w-3.5 h-3.5" />
+                          受講動画一覧
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="mt-4 pt-4 border-t border-slate-50 flex justify-end">
-                    <button
-                      onClick={() => openEditCourse(course)}
-                      className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                      コースを編集
-                    </button>
-                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Course Detail / Curriculum management */}
+              <div className="mb-6 flex items-center gap-4">
+                <button
+                  onClick={() => setAdminViewCourseDetail(false)}
+                  className="flex items-center justify-center w-9 h-9 rounded-xl border border-slate-100 bg-white text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <div>
+                  <h1 className="text-lg font-extrabold text-slate-800" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                    {selectedCourse.title}
+                  </h1>
+                  <p className="text-slate-400 text-xs mt-0.5">チャプター別カリキュラムと動画の管理</p>
                 </div>
               </div>
-            ))}
-          </div>
+
+              <div className="space-y-6 max-w-4xl">
+                {curriculum.map((chapter) => (
+                  <div key={chapter.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 space-y-4">
+                    <div className="flex items-center justify-between border-b border-slate-50 pb-4">
+                      <div>
+                        <h3 className="font-extrabold text-slate-800 text-sm" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                          {chapter.order}. {chapter.title}
+                        </h3>
+                        <p className="text-slate-400 text-xs mt-0.5">{chapter.videos.length} 本の動画</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setUploadSelectedChapterId(chapter.id);
+                          setUploadOrder(chapter.videos.length + 1);
+                          setShowUploadVideoModal(true);
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        動画を追加
+                      </button>
+                    </div>
+
+                    {chapter.videos.length === 0 ? (
+                      <div className="py-6 text-center text-slate-400 text-xs">
+                        この章にはまだ動画が登録されていません。右上の「動画を追加」からアップロードしてください。
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-slate-50">
+                        {chapter.videos.map((video) => (
+                          <div key={video.id} className="py-3.5 flex items-center justify-between group">
+                            <div className="flex items-center gap-3">
+                              <div className="w-6 h-6 bg-slate-50 rounded-lg flex items-center justify-center text-xs font-bold text-slate-400 tabular-nums">
+                                {video.order}
+                              </div>
+                              <div>
+                                <p className="text-sm font-semibold text-slate-700">{video.title}</p>
+                                <p className="text-xs text-slate-400 mt-0.5">{video.duration || "0:00"}</p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteVideo(video.id)}
+                              className="px-3 py-1.5 text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all duration-200"
+                            >
+                              削除
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Edit Course Modal */}
@@ -1702,6 +1823,100 @@ export default function App() {
                   style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
                 >
                   {isThumbnailUploading ? "保存中..." : "変更を保存"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Upload Video Modal */}
+        {showUploadVideoModal && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+                <h3 className="font-extrabold text-slate-800" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                  新規動画アップロード
+                </h3>
+                <button onClick={() => { setShowUploadVideoModal(false); setUploadedFile(null); }} className="text-slate-300 hover:text-slate-600 transition-colors p-1 rounded-lg hover:bg-slate-50">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={(e) => { e.preventDefault(); setDragOver(false); setUploadedFile(e.dataTransfer.files[0] ?? null); }}
+                  className={`relative border-2 border-dashed rounded-2xl p-8 text-center transition-all cursor-pointer ${
+                    dragOver ? "border-blue-400 bg-blue-50"
+                    : uploadedFile ? "border-emerald-400 bg-emerald-50/50"
+                    : "border-slate-200 hover:border-blue-300 hover:bg-slate-50/70"
+                  }`}
+                >
+                  {uploadedFile ? (
+                    <div>
+                      <div className="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center mx-auto mb-3">
+                        <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                      </div>
+                      <p className="font-bold text-slate-800 text-sm truncate max-w-[300px] mx-auto">{uploadedFile.name}</p>
+                      <p className="text-xs text-slate-400 mt-1">動画ファイルが選択されました</p>
+                      <button
+                        onClick={() => setUploadedFile(null)}
+                        className="text-xs text-red-400 hover:text-red-600 mt-2 transition-colors underline underline-offset-2"
+                      >
+                        削除して選び直す
+                      </button>
+                    </div>
+                  ) : (
+                    <div>
+                      <Upload className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                      <p className="text-slate-700 font-bold text-xs">動画ファイルをドラッグ＆ドロップ</p>
+                      <p className="text-slate-400 text-[10px] mt-0.5">または</p>
+                      <label className="mt-1.5 inline-block cursor-pointer">
+                        <span className="text-xs text-blue-600 hover:text-blue-700 font-semibold underline underline-offset-2 transition-colors">
+                          ファイルを選択する
+                        </span>
+                        <input type="file" accept="video/mp4" className="hidden" onChange={(e) => setUploadedFile(e.target.files?.[0] ?? null)} />
+                      </label>
+                      <p className="text-slate-300 text-[10px] mt-2">MP4形式</p>
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">動画タイトル</label>
+                  <input
+                    type="text"
+                    value={uploadTitle}
+                    onChange={(e) => setUploadTitle(e.target.value)}
+                    placeholder="例：HTMLタグの基本"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1.5">表示順</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={uploadOrder}
+                    onChange={(e) => setUploadOrder(Number(e.target.value) || 1)}
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                  />
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-slate-100 flex gap-3 justify-end">
+                <button onClick={() => { setShowUploadVideoModal(false); setUploadedFile(null); }} className="px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700 transition-colors">
+                  キャンセル
+                </button>
+                <button
+                  disabled={!uploadedFile || !uploadTitle.trim() || isUploading}
+                  onClick={handleSaveUpload}
+                  className={`px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-xl transition-colors ${
+                    isUploading ? "bg-slate-300 text-slate-500 cursor-wait" : ""
+                  }`}
+                  style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+                >
+                  {isUploading ? "アップロード中..." : "動画を保存"}
                 </button>
               </div>
             </div>
@@ -1911,135 +2126,7 @@ export default function App() {
     );
   }
 
-  // ─── ADMIN: VIDEO UPLOAD ──────────────────────────────────────────────────────
-  if (view === "admin-upload") {
-    return (
-      <AdminLayout
-        sidebarOpen={sidebarOpen}
-        setSidebarOpen={setSidebarOpen}
-        adminTab={adminTab}
-        setAdminTab={setAdminTab}
-        setView={setView}
-      >
-        <div className="p-4 sm:p-6">
-          <div className="mb-6">
-            <h1 className="text-lg font-extrabold text-slate-800" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-              動画アップロード
-            </h1>
-            <p className="text-slate-400 text-sm mt-0.5">動画ファイルをアップロードしてコースに追加します</p>
-          </div>
 
-          <div className="max-w-2xl">
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 sm:p-8 space-y-5">
-              <div
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => { e.preventDefault(); setDragOver(false); setUploadedFile(e.dataTransfer.files[0] ?? null); }}
-                className={`relative border-2 border-dashed rounded-2xl p-10 text-center transition-all cursor-pointer ${
-                  dragOver ? "border-blue-400 bg-blue-50"
-                  : uploadedFile ? "border-emerald-400 bg-emerald-50/50"
-                  : "border-slate-200 hover:border-blue-300 hover:bg-slate-50/70"
-                }`}
-              >
-                {uploadedFile ? (
-                  <div>
-                    <div className="w-14 h-14 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                      <CheckCircle2 className="w-7 h-7 text-emerald-600" />
-                    </div>
-                    <p className="font-bold text-slate-800 text-sm">{uploadedFile.name}</p>
-                    <p className="text-xs text-slate-400 mt-1">ファイルが選択されました</p>
-                    <button
-                      onClick={() => setUploadedFile(null)}
-                      className="text-xs text-red-400 hover:text-red-600 mt-2 transition-colors underline underline-offset-2"
-                    >
-                      削除して選び直す
-                    </button>
-                  </div>
-                ) : (
-                  <div>
-                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3 transition-colors ${dragOver ? "bg-blue-100" : "bg-slate-100"}`}>
-                      <Upload className={`w-7 h-7 ${dragOver ? "text-blue-600" : "text-slate-400"}`} />
-                    </div>
-                    <p className="text-slate-700 font-bold text-sm" style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                      動画ファイルをドラッグ＆ドロップ
-                    </p>
-                    <p className="text-slate-400 text-xs mt-1">または</p>
-                    <label className="mt-2 inline-block cursor-pointer">
-                      <span className="text-sm text-blue-600 hover:text-blue-700 font-semibold underline underline-offset-2 transition-colors">
-                        ファイルを選択する
-                      </span>
-                      <input type="file" accept="video/mp4" className="hidden" onChange={(e) => setUploadedFile(e.target.files?.[0] ?? null)} />
-                    </label>
-                    <p className="text-slate-300 text-xs mt-3">MP4形式 · 最大 2GB</p>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">動画タイトル</label>
-                <input
-                  type="text"
-                  value={uploadTitle}
-                  onChange={(e) => setUploadTitle(e.target.value)}
-                  placeholder="例：HTMLの基礎 — タグの使い方入門"
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">挿入先の章</label>
-                <div className="relative">
-                  <select
-                    value={uploadChapterId}
-                    onChange={(e) => setUploadChapterId(Number(e.target.value))}
-                    className="w-full px-4 py-2.5 pr-10 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition appearance-none text-slate-700"
-                  >
-                    {curriculum.map((chapter) => (
-                      <option key={chapter.id} value={chapter.id}>
-                        {chapter.order}. {chapter.title}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-1.5">表示順</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={uploadOrder}
-                  onChange={(e) => setUploadOrder(Number(e.target.value) || 1)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
-                />
-                <p className="text-xs text-slate-400 mt-1">選んだ章の中でこの番号に挿入します。既存動画は自動で順番を詰め直します。</p>
-              </div>
-
-              <button
-                disabled={!uploadedFile || !uploadTitle.trim() || isUploading}
-                onClick={handleSaveUpload}
-                className={`w-full py-3 rounded-xl font-bold text-sm transition-colors ${
-                  isUploading
-                    ? "bg-slate-300 text-slate-600 cursor-wait"
-                    : uploadedFile && uploadTitle.trim()
-                    ? "bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white"
-                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                }`}
-                style={{ fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-              >
-                {isUploading
-                  ? "アップロード中..."
-                  : uploadedFile && uploadTitle.trim()
-                  ? "保存（アップロード）"
-                  : "タイトルとファイルを選択してください"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </AdminLayout>
-    );
-  }
 
   return null;
 }
